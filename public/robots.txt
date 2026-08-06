@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /account
+Disallow: /cart
+Disallow: /wishlist
+Disallow: /cms
+
+Sitemap: https://femiro.com/sitemap.xml

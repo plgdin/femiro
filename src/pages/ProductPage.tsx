@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { ArrowLeft, Heart, ShoppingBag } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { ArrowLeft, Heart, ShoppingBag, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react'
 import type { Product } from '../types'
 import { money } from '../data/initialData'
 import { ProductCard } from '../components/ProductCard'
+import { trackProductView, getPersonalizedRecommendations } from '../services/recommendationService'
 
 export function ProductPage({
   product,
@@ -20,10 +21,44 @@ export function ProductPage({
   products: Product[]
 }) {
   const [selectedSize, setSelectedSize] = useState('M')
-  const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
+  const [activeSlide, setActiveSlide] = useState(0)
+  const sliderRef = useRef<HTMLDivElement>(null)
+  const sizes = product.sizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 
-  const image1 = product.image
-  const image2 = product.hover || product.image
+  useEffect(() => {
+    if (product && product.id) {
+      trackProductView(product.id)
+    }
+  }, [product.id])
+
+  const recommendedProducts = useMemo(() => {
+    const recs = getPersonalizedRecommendations(products, [], wished ? [product.id] : [], 4)
+    return recs.filter(p => p.id !== product.id).slice(0, 4)
+  }, [products, product.id, wished])
+
+  const images = [
+    product.image,
+    product.hover || product.image
+  ].filter(Boolean)
+
+  const scrollToSlide = (index: number) => {
+    setActiveSlide(index)
+    if (sliderRef.current) {
+      const slideWidth = sliderRef.current.clientWidth
+      sliderRef.current.scrollTo({
+        left: slideWidth * index,
+        behavior: 'smooth'
+      })
+    }
+  }
+
+  const handleScroll = () => {
+    if (sliderRef.current) {
+      const slideWidth = sliderRef.current.clientWidth
+      const index = Math.round(sliderRef.current.scrollLeft / slideWidth)
+      setActiveSlide(index)
+    }
+  }
 
   return (
     <main className="product-page page-shell">
@@ -35,26 +70,55 @@ export function ProductPage({
       </div>
 
       <div className="product-detail-layout">
-        {/* Exactly 2 Images Gallery */}
-        <div className="detail-gallery-two">
-          <div className="gallery-img-wrap">
-            <img
-              src={image1}
-              alt={`${product.name} Main View`}
-              onError={e => {
-                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=900&q=85'
-              }}
-            />
+        {/* Interactive Image Slider / Carousel */}
+        <div className="product-image-carousel-container">
+          <div className="carousel-wrapper" ref={sliderRef} onScroll={handleScroll}>
+            {images.map((imgUrl, idx) => (
+              <div className="carousel-slide" key={idx}>
+                <img
+                  src={imgUrl}
+                  alt={`${product.name} View ${idx + 1}`}
+                  onError={e => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=900&q=85'
+                  }}
+                />
+              </div>
+            ))}
           </div>
-          <div className="gallery-img-wrap">
-            <img
-              src={image2}
-              alt={`${product.name} Detail View`}
-              onError={e => {
-                (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1581044777550-4cfa60707c03?auto=format&fit=crop&w=900&q=85'
-              }}
-            />
-          </div>
+
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="carousel-arrow prev"
+                onClick={() => scrollToSlide((activeSlide - 1 + images.length) % images.length)}
+                aria-label="Previous image"
+              >
+                <ChevronLeft size={20} />
+              </button>
+              <button
+                type="button"
+                className="carousel-arrow next"
+                onClick={() => scrollToSlide((activeSlide + 1) % images.length)}
+                aria-label="Next image"
+              >
+                <ChevronRight size={20} />
+              </button>
+
+              <div className="carousel-dots">
+                {images.map((_, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`carousel-dot ${activeSlide === idx ? 'active' : ''}`}
+                    onClick={() => scrollToSlide(idx)}
+                    aria-label={`Go to slide ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Product Information Column */}
@@ -130,22 +194,36 @@ export function ProductPage({
 
       {/* Recommended Products Section */}
       <div className="related-products-section">
-        <h3 className="related-heading">You may also like</h3>
-        <div className="product-grid">
-          {products
-            .filter(p => p.id !== product.id)
-            .slice(0, 4)
-            .map(item => (
-              <ProductCard
-                key={item.id}
-                product={item}
-                wished={false}
-                onWish={() => {}}
-                onAdd={() => onAdd(item, 'M')}
-                onOpen={() => navigate(`/product/${item.id}`)}
-              />
-            ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+          <Sparkles size={18} color="var(--wine)" />
+          <h3 className="related-heading" style={{ margin: 0 }}>Recommended for You</h3>
         </div>
+        <div className="product-grid">
+          {recommendedProducts.map(item => (
+            <ProductCard
+              key={item.id}
+              product={item}
+              wished={false}
+              onWish={() => {}}
+              onAdd={() => onAdd(item, 'M')}
+              onOpen={() => navigate(`/product/${item.id}`)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Floating Sticky Add-to-Cart Action Bar */}
+      <div className="floating-add-to-cart-bar">
+        <div className="floating-cart-info">
+          <img src={product.image} alt={product.name} />
+          <div>
+            <span className="floating-title">{product.name}</span>
+            <span className="floating-price">{money(product.price)} · Size {selectedSize}</span>
+          </div>
+        </div>
+        <button className="button dark floating-btn" onClick={() => onAdd(product, selectedSize)} type="button">
+          Add to Bag <ShoppingBag size={15} />
+        </button>
       </div>
     </main>
   )

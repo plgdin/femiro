@@ -10,6 +10,7 @@ export function ShopPage({
   onWish,
   onAdd,
   onOpen,
+  categories = [],
   initialCategory = 'All',
   onCategoryChange
 }: {
@@ -19,6 +20,7 @@ export function ShopPage({
   onWish: (id: number) => void
   onAdd: (product: Product) => void
   onOpen: (product: Product) => void
+  categories?: string[]
   initialCategory?: string
   onCategoryChange?: (cat: string) => void
 }) {
@@ -49,7 +51,7 @@ export function ShopPage({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const categories = ['All', 'Kurtis', 'Co-ords', 'Salwar sets', 'Jewelry']
+  const categoryOptions = ['All', ...categories]
 
   const sortOptions = [
     { label: 'Featured', value: 'featured' },
@@ -79,7 +81,7 @@ export function ShopPage({
     if (selectedSort === 'price-asc') return a.price - b.price
     if (selectedSort === 'price-desc') return b.price - a.price
     if (selectedSort === 'name-asc') return a.name.localeCompare(b.name)
-    return a.id - b.id // featured
+    return b.id - a.id // newest products first
   })
 
   const currentSortLabel = sortOptions.find(o => o.value === selectedSort)?.label || 'Featured'
@@ -98,7 +100,7 @@ export function ShopPage({
   const pageSubtitle = pageSubtitles[selectedCategory] || 'Explore our curated pieces.'
 
   return (
-    <main className="page-shell">
+    <main className="page-shell shop-page">
       <div className="page-heading">
         <p className="eyebrow">THE FEMIRO COLLECTION</p>
         <h1>{pageTitle}</h1>
@@ -106,8 +108,6 @@ export function ShopPage({
       </div>
 
       <div className="shop-toolbar">
-        <span className="count-label">{sortedProducts.length} pieces available</span>
-
         <div className="toolbar-actions">
           {/* Filter Button & Dropdown */}
           <div className="dropdown-container" ref={filterRef}>
@@ -124,7 +124,7 @@ export function ShopPage({
             {filterOpen && (
               <div className="shop-dropdown-menu">
                 <div className="dropdown-header">Filter by Category</div>
-                {categories.map(cat => (
+                {categoryOptions.map(cat => (
                   <button
                     key={cat}
                     className={`dropdown-item ${selectedCategory === cat ? 'selected' : ''}`}

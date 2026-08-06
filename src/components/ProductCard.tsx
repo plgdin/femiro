@@ -23,7 +23,9 @@ export function ProductCard({
           src={product.image}
           alt={product.name}
           onError={e => {
-            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?auto=format&fit=crop&w=900&q=85'
+            const image = e.currentTarget
+            image.removeAttribute('src')
+            image.classList.add('image-load-failed')
           }}
         />
         <img
@@ -31,7 +33,9 @@ export function ProductCard({
           src={product.hover || product.image}
           alt=""
           onError={e => {
-            (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1581044777550-4cfa60707c03?auto=format&fit=crop&w=900&q=85'
+            const image = e.currentTarget
+            image.removeAttribute('src')
+            image.classList.add('image-load-failed')
           }}
         />
         <div className="product-top">

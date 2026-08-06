@@ -1,37 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { MapPin, PackageCheck, CreditCard, Plus, ShieldCheck, LogOut, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
+import { MapPin, PackageCheck, CreditCard, Plus, ShieldCheck, LogOut, Mail, Lock, Eye, EyeOff, User, Download } from 'lucide-react'
 import type { Address, Order } from '../types'
 import { money } from '../data/initialData'
 import { Logo } from '../components/Logo'
+import { supabase } from '../lib/supabase'
+import { deleteAddress, saveAddress } from '../services/storeService'
 
-// OAuth SVGs & Helpers
-const GoogleIcon = () => (
-  <svg viewBox="0 0 24 24" width="16" height="16" style={{ marginRight: '8px' }}>
-    <path
-      fill="#4285F4"
-      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.93h6.59c-.28 1.5-.1.86-1.5 2.4l3.1 2.4c1.8-1.66 2.85-4.1 2.85-6.66z"
-    />
-    <path
-      fill="#34A853"
-      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.1-2.4c-.86.58-1.97.92-3.23.92-2.48 0-4.58-1.68-5.33-3.93L5.1 18.06c2 3.97 6.1 6.64 10.77 6.64z"
-    />
-    <path
-      fill="#FBBC05"
-      d="M6.67 15.68c-.19-.58-.3-1.2-.3-1.84s.11-1.26.3-1.84L3.6 9.61C2.75 11.31 2.27 13.2 2.27 15s.48 3.69 1.33 5.39l3.07-2.41z"
-    />
-    <path
-      fill="#EA4335"
-      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.95 1.19 15.24 0 12 0 7.33 0 3.23 2.67 1.23 6.64l3.07 2.41c.75-2.25 2.85-3.93 5.33-3.93z"
-    />
-  </svg>
-)
-
-const AppleIcon = () => (
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style={{ marginRight: '8px' }}>
-    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-1 .04-2.21.67-2.93 1.49-.62.69-1.16 1.84-1.01 2.96 1.12.09 2.27-.58 2.95-1.39" />
-  </svg>
-)
+type AdminUser = {
+  id: string
+  email: string
+  displayName: string
+  role: 'user' | 'employee' | 'admin'
+}
 
 const StarDivider = () => (
   <div className="star-divider">
@@ -49,7 +30,10 @@ export function AccountPage({
   isAdmin,
   setIsAdmin,
   userEmail,
-  setUserEmail
+  setUserEmail,
+  setUserRole,
+  userRole,
+  userId
 }: {
   navigate: (path: string) => void
   addresses: Address[]
@@ -59,7 +43,102 @@ export function AccountPage({
   setIsAdmin: Dispatch<SetStateAction<boolean>>
   userEmail: string | null
   setUserEmail: Dispatch<SetStateAction<string | null>>
+  userRole?: 'admin' | 'employee' | 'user'
+  setUserRole?: Dispatch<SetStateAction<'admin' | 'employee' | 'user'>>
+  userId?: string | null
 }) {
+  const handleDownloadInvoice = (ord: Order) => {
+    const itemsHtml = ord.items.map(item => 
+      '<tr>' +
+      '<td>' + item.name + '</td>' +
+      '<td>' + (item.size || 'Free Size') + '</td>' +
+      '<td>' + item.qty + '</td>' +
+      '<td>₹' + item.price + '</td>' +
+      '<td>₹' + (item.price * item.qty) + '</td>' +
+      '</tr>'
+    ).join('')
+
+    const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Invoice - Femiro Designs</title>
+  <style>
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #2c2c2c; margin: 40px; }
+    .header { display: flex; justify-content: space-between; border-bottom: 2px solid #842952; padding-bottom: 20px; }
+    .logo { font-size: 24px; font-weight: bold; color: #842952; }
+    .title { font-size: 28px; text-transform: uppercase; color: #842952; }
+    .details { margin: 30px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 14px; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    .table th, .table td { border-bottom: 1px solid #ded5d8; padding: 12px; text-align: left; }
+    .table th { background: #fdf2f6; color: #842952; font-weight: bold; }
+    .total-section { margin-top: 30px; text-align: right; font-size: 16px; }
+    .total-amount { font-size: 20px; font-weight: bold; color: #842952; }
+    .footer { margin-top: 60px; text-align: center; font-size: 12px; color: #8c7e83; border-top: 1px solid #ded5d8; padding-top: 20px; }
+    @media print {
+      body { margin: 20px; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <div class="logo">FEMIRO DESIGNS</div>
+      <p style="margin: 5px 0 0 0;">femirodesigns@gmail.com | +91 95626 37753</p>
+    </div>
+    <div class="title">Invoice</div>
+  </div>
+  
+  <div class="details">
+    <div>
+      <h3>Order Information</h3>
+      <p><strong>Order ID:</strong> ${ord.id}</p>
+      <p><strong>Date:</strong> ${ord.date}</p>
+      <p><strong>Status:</strong> ${ord.status}</p>
+    </div>
+    <div>
+      <h3>Delivery Address</h3>
+      <p>${ord.deliveryAddress}</p>
+    </div>
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Item Details</th>
+        <th>Size</th>
+        <th>Qty</th>
+        <th>Price</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemsHtml}
+    </tbody>
+  </table>
+
+  <div class="total-section">
+    <p>Total Paid: <span class="total-amount">₹${ord.total}</span></p>
+  </div>
+
+  <div class="footer">
+    <p>Thank you for shopping with Femiro Designs!</p>
+    <p class="no-print"><button onclick="window.print()" style="padding: 8px 16px; background: #842952; color: white; border: none; border-radius: 4px; cursor: pointer;">Print Invoice</button></p>
+  </div>
+</body>
+</html>`
+
+    const blob = new Blob([htmlContent], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `invoice_${ord.id}.html`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const [activeTab, setActiveTab] = useState<'locations' | 'orders' | 'profile'>('locations')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingAddress, setEditingAddress] = useState<Address | null>(null)
@@ -82,58 +161,148 @@ export function AccountPage({
   const [formPincode, setFormPincode] = useState('')
   const [formTag, setFormTag] = useState<'Home' | 'Office' | 'Other'>('Home')
   const [formDefault, setFormDefault] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([])
+  const [roleSaving, setRoleSaving] = useState<string | null>(null)
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!isAdmin || !userId) return
+    const loadAdminUsers = async () => {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (!token) return
+      const response = await fetch('/api/admin-users', { headers: { Authorization: `Bearer ${token}` } })
+      if (!response.ok) return
+      const result = await response.json() as { users?: AdminUser[] }
+      setAdminUsers(result.users || [])
+    }
+    void loadAdminUsers()
+  }, [isAdmin, userId])
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordMessage(null)
+    setPasswordError(null)
+    if (newPassword.length < 8) {
+      setPasswordError('Password must be at least 8 characters.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.')
+      return
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) {
+      setPasswordError(error.message)
+      return
+    }
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordMessage('Password changed successfully.')
+  }
+
+  const handleRoleChange = async (targetId: string, role: AdminUser['role']) => {
+    setRoleSaving(targetId)
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (!token) {
+      setRoleSaving(null)
+      return
+    }
+    const response = await fetch('/api/admin-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ userId: targetId, role })
+    })
+    if (response.ok) setAdminUsers(users => users.map(user => user.id === targetId ? { ...user, role } : user))
+    setRoleSaving(null)
+  }
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
-    if (emailInput.trim().toLowerCase() === 'admin@femiro.com' && passwordInput === 'makkuani47*') {
-      setIsAdmin(true)
-      setUserEmail('admin@femiro.com')
-      localStorage.setItem('femiro-user-email', 'admin@femiro.com')
-      localStorage.setItem('femiro-is-admin', 'true')
-    } else if (emailInput.trim()) {
-      setIsAdmin(false)
-      setUserEmail(emailInput)
-      localStorage.setItem('femiro-user-email', emailInput)
-      localStorage.setItem('femiro-is-admin', 'false')
-    } else {
+    const lowerEmail = emailInput.trim().toLowerCase()
+    if (!lowerEmail || !passwordInput) {
       setLoginError('Please enter a valid email address.')
+      return
     }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: lowerEmail,
+      password: passwordInput
+    })
+
+    if (error || !data.user) {
+      setLoginError(error?.message || 'Unable to sign in.')
+      return
+    }
+
+    const role = data.user.app_metadata?.role === 'admin' || data.user.app_metadata?.role === 'employee'
+      ? data.user.app_metadata.role
+      : 'user'
+    setIsAdmin(role !== 'user')
+    setUserRole?.(role)
+    setUserEmail(data.user.email || lowerEmail)
+    navigate(role === 'user' ? '/' : '/cms')
   }
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
-    if (emailInput.trim() && nameInput.trim()) {
-      setIsAdmin(false)
-      setUserEmail(nameInput.trim())
-      localStorage.setItem('femiro-user-email', nameInput.trim())
-      localStorage.setItem('femiro-is-admin', 'false')
-    } else {
+    if (!emailInput.trim() || !nameInput.trim() || !passwordInput) {
       setLoginError('Please fill out all fields.')
+      return
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email: emailInput.trim().toLowerCase(),
+      password: passwordInput,
+      options: { data: { name: nameInput.trim() } }
+    })
+
+    if (error) {
+      setLoginError(error.message)
+      return
+    }
+
+    if (data.user && data.session) {
+      setIsAdmin(false)
+      setUserRole?.('user')
+      setUserEmail(data.user.email || emailInput.trim().toLowerCase())
+      navigate('/')
+    } else {
+      setResetSuccess('Account created. Check your email to confirm it, then sign in.')
+      setAuthMode('signin')
     }
   }
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError(null)
-    if (emailInput.trim()) {
-      setResetSuccess(`Password reset link sent to ${emailInput}!`)
-      setTimeout(() => {
-        setResetSuccess(null)
-        setAuthMode('signin')
-      }, 3000)
-    } else {
+    if (!emailInput.trim()) {
       setLoginError('Please enter your email.')
+      return
     }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(emailInput.trim().toLowerCase(), {
+      redirectTo: window.location.origin + '/account'
+    })
+    if (error) {
+      setLoginError(error.message)
+      return
+    }
+    setResetSuccess('Password reset link sent. Check your email.')
   }
 
 
   const handleLogout = () => {
+    void supabase.auth.signOut()
     setIsAdmin(false)
+    setUserRole?.('user')
     setUserEmail(null)
-    localStorage.removeItem('femiro-user-email')
-    localStorage.removeItem('femiro-is-admin')
   }
 
   const openAddressModal = (addr?: Address) => {
@@ -149,7 +318,7 @@ export function AccountPage({
       setFormDefault(addr.isDefault)
     } else {
       setEditingAddress(null)
-      setFormName(userEmail || 'Aisha Sharma')
+      setFormName('')
       setFormMobile('+91 ')
       setFormStreet('')
       setFormCity('Mumbai')
@@ -163,12 +332,9 @@ export function AccountPage({
 
   const handleSaveAddress = (e: React.FormEvent) => {
     e.preventDefault()
-    if (formDefault) {
-      setAddresses(prev => prev.map(a => ({ ...a, isDefault: false })))
-    }
+    let nextAddresses: Address[] = []
     if (editingAddress) {
-      setAddresses(prev =>
-        prev.map(a =>
+      nextAddresses = addresses.map(a =>
           a.id === editingAddress.id
             ? {
                 ...a,
@@ -183,7 +349,6 @@ export function AccountPage({
               }
             : a
         )
-      )
     } else {
       const newAddr: Address = {
         id: `addr-${Date.now()}`,
@@ -196,13 +361,17 @@ export function AccountPage({
         tag: formTag,
         isDefault: formDefault
       }
-      setAddresses(prev => [...prev, newAddr])
+      nextAddresses = [...addresses, newAddr]
     }
+    if (formDefault) nextAddresses = nextAddresses.map(a => ({ ...a, isDefault: a.id === (editingAddress?.id || nextAddresses[nextAddresses.length - 1]?.id) }))
+    setAddresses(nextAddresses)
+    if (userId) void Promise.all(nextAddresses.map(address => saveAddress(userId, address)))
     setIsModalOpen(false)
   }
 
   const handleDeleteAddress = (id: string) => {
     setAddresses(prev => prev.filter(a => a.id !== id))
+    void deleteAddress(id)
   }
 
   if (!userEmail) {
@@ -276,14 +445,6 @@ export function AccountPage({
                     Sign In
                   </button>
                 </form>
-
-                <div className="oauth-divider">or continue with</div>
-
-                <div className="oauth-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <button className="oauth-btn" type="button" style={{ width: '100%' }} onClick={() => { setUserEmail('Google User'); navigate('/'); }}>
-                    <GoogleIcon /> Continue with Google
-                  </button>
-                </div>
 
                 <div className="signin-card-footer">
                   Don't have an account? <button type="button" onClick={() => { setAuthMode('signup'); setLoginError(null); }}>Sign Up</button>
@@ -368,14 +529,6 @@ export function AccountPage({
                   </button>
                 </form>
 
-                <div className="oauth-divider">or sign up with</div>
-
-                <div className="oauth-grid" style={{ gridTemplateColumns: '1fr' }}>
-                  <button className="oauth-btn" type="button" style={{ width: '100%' }} onClick={() => { setUserEmail('Google User'); navigate('/'); }}>
-                    <GoogleIcon /> Sign up with Google
-                  </button>
-                </div>
-
                 <div className="signin-card-footer">
                   Already have an account? <button type="button" onClick={() => { setAuthMode('signin'); setLoginError(null); }}>Sign In</button>
                 </div>
@@ -430,10 +583,6 @@ export function AccountPage({
               </>
             )}
 
-            <div className="signin-admin-info">
-              <p>Admin Email: <strong>admin@femiro.com</strong></p>
-              <p>Password: <strong>makkuani47*</strong></p>
-            </div>
           </div>
         </div>
       </main>
@@ -441,10 +590,10 @@ export function AccountPage({
   }
 
   return (
-    <main className="page-shell">
+    <main className="page-shell account-page">
       <div className="page-heading">
         <p className="eyebrow">YOUR FEMIRO ACCOUNT</p>
-        <h1>Welcome, {userEmail}</h1>
+        <h1>Welcome</h1>
         <p>Manage your saved delivery locations, view order history, or access admin controls.</p>
       </div>
 
@@ -481,7 +630,7 @@ export function AccountPage({
                   <div>
                     <b style={{ color: 'var(--wine)', fontSize: '14px' }}>Administrator Mode Active</b>
                     <p style={{ margin: 0, fontSize: '11px', color: '#666' }}>
-                      Logged in as admin@femiro.com with full store management access.
+                      Staff access enabled for this account.
                     </p>
                   </div>
                 </div>
@@ -566,7 +715,28 @@ export function AccountPage({
                         <div style={{ alignSelf: 'center', fontSize: '13px' }}>
                           <p style={{ margin: 0, fontWeight: 600 }}>Total Paid: {money(ord.total)}</p>
                           <small style={{ color: '#666' }}>Deliver to: {ord.deliveryAddress}</small>
+                          {ord.shippingId && (
+                            <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--wine)', fontWeight: 600 }}>
+                              Tracking ID: <span style={{ fontFamily: 'monospace', background: '#fdf2f6', padding: '2px 6px', borderRadius: '4px' }}>{ord.shippingId}</span>
+                            </p>
+                          )}
+                          {ord.notes && (
+                            <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#555', fontStyle: 'italic', background: '#fcfafb', padding: '6px 10px', borderRadius: '4px', borderLeft: '3px solid var(--wine)', maxWidth: '400px', lineHeight: 1.4 }}>
+                              <strong>Seller Note:</strong> {ord.notes}
+                            </p>
+                          )}
                         </div>
+                      </div>
+                      {/* Download Invoice Button */}
+                      <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '14px', borderTop: '1px solid var(--line)', paddingTop: '12px' }}>
+                        <button
+                          type="button"
+                          className="button secondary"
+                          style={{ width: 'auto', padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', height: '32px' }}
+                          onClick={() => handleDownloadInvoice(ord)}
+                        >
+                          <Download size={13} /> Download Invoice
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -579,16 +749,56 @@ export function AccountPage({
                 <div className="account-section-header">
                   <h2>Profile Details</h2>
                 </div>
-                <form className="account-form" onSubmit={e => e.preventDefault()}>
-                  <label>
+                <div className="profile-fields">
+                  <label className="profile-field">
                     Account Email
                     <input type="email" disabled value={userEmail || ''} />
                   </label>
-                  <label>
-                    Account Role
-                    <input type="text" disabled value={isAdmin ? 'Administrator (CMS Access)' : 'Customer'} />
-                  </label>
+                </div>
+
+                <form className="password-panel" onSubmit={handleChangePassword}>
+                  <h3>Change Password</h3>
+                  <p>Use a new password with at least 8 characters.</p>
+                  <div className="profile-fields">
+                    <label className="profile-field">
+                      New Password
+                      <input type="password" autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
+                    </label>
+                    <label className="profile-field">
+                      Confirm Password
+                      <input type="password" autoComplete="new-password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
+                    </label>
+                  </div>
+                  {passwordError && <p className="form-error">{passwordError}</p>}
+                  {passwordMessage && <p className="form-success">{passwordMessage}</p>}
+                  <button className="button dark" type="submit">Change Password</button>
                 </form>
+
+                {isAdmin && (
+                  <div className="role-management">
+                    <div className="account-section-header">
+                      <div>
+                        <h2>Manage User Roles</h2>
+                        <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#666' }}>Give staff CMS access. Changes apply to the account immediately.</p>
+                      </div>
+                    </div>
+                    <div className="role-user-list">
+                      {adminUsers.map(user => (
+                        <div className="role-user-row" key={user.id}>
+                          <div>
+                            <b>{user.email}</b>
+                            {user.displayName && <small>{user.displayName}</small>}
+                          </div>
+                          <select value={user.role} disabled={roleSaving === user.id} onChange={e => void handleRoleChange(user.id, e.target.value as AdminUser['role'])}>
+                            <option value="user">Customer</option>
+                            <option value="employee">Employee</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </section>

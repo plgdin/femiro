@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ShoppingBag, Sparkles, UserRound, CheckCircle2, X } from 'lucide-react'
-import type { Product, Address, Order, CartItem, Page } from './types'
-import { INITIAL_PRODUCTS, INITIAL_ADDRESSES, INITIAL_ORDERS, stored } from './data/initialData'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { House, Store, ShoppingCart, UserRound, CheckCircle2, X, Heart, ShieldCheck, Layers, ChevronRight } from 'lucide-react'
+import type { Product, Address, Order, CartItem, Page, HeroContent, DiscountCode } from './types'
+import { stored } from './data/initialData'
 
 import { Header } from './components/Header'
 import { Footer } from './components/Footer'
 import { CartDrawer } from './components/CartDrawer'
 import { SearchOverlay } from './components/SearchOverlay'
+import { Logo } from './components/Logo'
 
 import { HomePage } from './pages/HomePage'
 import { ShopPage } from './pages/ShopPage'
@@ -16,6 +17,20 @@ import { CartPage } from './pages/CartPage'
 import { WishlistPage } from './pages/WishlistPage'
 import { CMSPage } from './pages/CMSPage'
 import { NewArrivalsPage } from './pages/NewArrivalsPage'
+import { LegalPage } from './pages/LegalPage'
+import { supabase } from './lib/supabase'
+import { loadAddresses, loadCategories, loadDiscounts, loadHero, loadOrders, loadProducts, saveHero, syncCategories, syncDiscounts } from './services/storeService'
+
+const DEFAULT_HERO: HeroContent = {
+  eyebrow: 'MONSOON 2026',
+  headline: 'Soft power, beautifully worn.',
+  subtitle: 'Discover handcrafted drapes, co-ords, and festive couture designed for modern grace.',
+  imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=2000&q=90',
+  buttonText: 'Shop the collection',
+  buttonLink: '/shop'
+}
+
+const DEFAULT_DISCOUNTS: DiscountCode[] = []
 
 const pathPage = (): Page => {
   const path = window.location.pathname
@@ -26,6 +41,9 @@ const pathPage = (): Page => {
   if (path.startsWith('/cart')) return 'cart'
   if (path.startsWith('/cms')) return 'cms'
   if (path.startsWith('/new-arrivals')) return 'new-arrivals'
+  if (path.startsWith('/terms')) return 'terms'
+  if (path.startsWith('/refund')) return 'refund'
+  if (path.startsWith('/privacy')) return 'privacy'
   return 'home'
 }
 
@@ -35,15 +53,31 @@ const getCategoryFromUrl = () => {
 }
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(() => stored('femiro-products', INITIAL_PRODUCTS))
-  const [addresses, setAddresses] = useState<Address[]>(() => stored('femiro-addresses', INITIAL_ADDRESSES))
-  const [orders, setOrders] = useState<Order[]>(() => stored('femiro-orders', INITIAL_ORDERS))
-  const [cart, setCart] = useState<CartItem[]>(() => stored('femiro-cart', []))
-  const [wished, setWished] = useState<number[]>(() => stored('femiro-wishlist', []))
+  const [products, setProducts] = useState<Product[]>([])
+  const [addresses, setAddresses] = useState<Address[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('femiro-cart')
+      return saved ? JSON.parse(saved) : []
+    } catch { return [] }
+  })
+  const [wished, setWished] = useState<number[]>([])
 
   // Admin and Auth State
-  const [userEmail, setUserEmail] = useState<string | null>(() => localStorage.getItem('femiro-user-email'))
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => localStorage.getItem('femiro-is-admin') === 'true')
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState<'admin' | 'employee' | 'user'>('user')
+  const [categories, setCategories] = useState<string[]>([])
+  const [heroContent, setHeroContent] = useState<HeroContent>(DEFAULT_HERO)
+  const [discounts, setDiscounts] = useState<DiscountCode[]>(DEFAULT_DISCOUNTS)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [storeLoaded, setStoreLoaded] = useState(false)
+
+  // Persist cart to localStorage on every change
+  useEffect(() => {
+    try { localStorage.setItem('femiro-cart', JSON.stringify(cart)) } catch {}
+  }, [cart])
 
   const [page, setPage] = useState<Page>(pathPage)
   const [currentCategory, setCurrentCategory] = useState<string>(getCategoryFromUrl)
@@ -56,42 +90,143 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
+    let active = true
+
+    const applySession = async (session: Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']) => {
+      if (!active) return
+      const user = session?.user
+      setUserId(user?.id || null)
+      let role = user?.app_metadata?.role === 'admin' || user?.app_metadata?.role === 'employee'
+        ? user.app_metadata.role
+        : 'user'
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
+        if (profile?.role === 'admin' || profile?.role === 'employee') role = profile.role
+      }
+      if (!active) return
+      setUserEmail(user?.email || null)
+      setUserRole(role)
+      setIsAdmin(role !== 'user')
+    }
+
+    void supabase.auth.getSession().then(({ data }) => applySession(data.session))
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => applySession(session))
+
     const onPop = () => {
       setPage(pathPage())
       setCurrentCategory(getCategoryFromUrl())
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
     }
     const onScroll = () => setScrollY(window.scrollY)
     window.addEventListener('popstate', onPop)
     window.addEventListener('scroll', onScroll)
     return () => {
+      active = false
+      authListener.subscription.unsubscribe()
       window.removeEventListener('popstate', onPop)
       window.removeEventListener('scroll', onScroll)
     }
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('femiro-products', JSON.stringify(products))
-  }, [products])
+    let active = true
+    const loadStore = async () => {
+      try {
+        const results = await Promise.allSettled([
+          loadProducts(),
+          loadCategories(),
+          loadHero(),
+          loadDiscounts()
+        ])
+        if (!active) return
+        const nextProducts = results[0].status === 'fulfilled' ? results[0].value : []
+        const nextCategories = results[1].status === 'fulfilled' ? results[1].value : []
+        const nextHero = results[2].status === 'fulfilled' ? results[2].value : null
+        const nextDiscounts = results[3].status === 'fulfilled' ? results[3].value : []
+        results.forEach(result => {
+          if (result.status === 'rejected') console.error('Store resource load failed', result.reason)
+        })
+        setProducts(nextProducts)
+        setCategories(nextCategories)
+        if (nextHero) setHeroContent(nextHero)
+        setDiscounts(nextDiscounts)
+
+        // Filter out stale cart items that no longer exist in the database
+        if (nextProducts.length > 0) {
+          setCart(currentCart => {
+            const validIds = new Set(nextProducts.map(p => p.id))
+            const filtered = currentCart.filter(item => validIds.has(item.product.id))
+            return filtered.length !== currentCart.length ? filtered : currentCart
+          })
+        }
+        setStoreLoaded(true)
+
+        if (userId) {
+          const staff = userRole === 'admin' || userRole === 'employee'
+          const [nextAddresses, nextOrders] = await Promise.all([
+            loadAddresses(userId),
+            loadOrders(userId, staff)
+          ])
+          if (!active) return
+          setAddresses(nextAddresses)
+          setOrders(nextOrders)
+        } else {
+          setAddresses([])
+          setOrders([])
+        }
+      } catch (error) {
+        console.error('Store data load failed', error)
+      }
+    }
+    void loadStore()
+    return () => { active = false }
+  }, [userId, userRole])
 
   useEffect(() => {
-    localStorage.setItem('femiro-addresses', JSON.stringify(addresses))
-  }, [addresses])
+    if (!storeLoaded || userRole !== 'admin') return
+    void syncCategories(categories).catch(error => console.error('Category sync failed', error))
+  }, [categories, storeLoaded, userRole])
 
   useEffect(() => {
-    localStorage.setItem('femiro-orders', JSON.stringify(orders))
-  }, [orders])
+    if (!storeLoaded || userRole !== 'admin') return
+    void saveHero(heroContent).catch(error => console.error('Hero sync failed', error))
+  }, [heroContent, storeLoaded, userRole])
 
   useEffect(() => {
-    localStorage.setItem('femiro-cart', JSON.stringify(cart))
-  }, [cart])
+    if (!storeLoaded || userRole !== 'admin') return
+    void syncDiscounts(discounts).catch(error => console.error('Discount sync failed', error))
+  }, [discounts, storeLoaded, userRole])
 
   useEffect(() => {
-    localStorage.setItem('femiro-wishlist', JSON.stringify(wished))
-  }, [wished])
+    const metadata: Record<Page, { title: string; description: string }> = {
+      home: { title: 'Femiro Designs | Elegant womenswear', description: 'Small-batch kurtis, co-ords, salwar sets, and occasionwear for modern women.' },
+      shop: { title: 'Shop All | Femiro Designs', description: 'Explore Femiro small-batch womenswear and occasion pieces.' },
+      account: { title: 'Account | Femiro Designs', description: 'Manage your Femiro account, addresses, and orders.' },
+      wishlist: { title: 'Wishlist | Femiro Designs', description: 'Your saved Femiro pieces.' },
+      product: { title: 'Product | Femiro Designs', description: 'Discover details for this Femiro piece.' },
+      cart: { title: 'Shopping Bag | Femiro Designs', description: 'Review your Femiro shopping bag and checkout.' },
+      cms: { title: 'Store Management | Femiro', description: 'Femiro store management.' },
+      'new-arrivals': { title: 'New Arrivals | Femiro Designs', description: 'Shop the newest Femiro designs.' },
+      terms: { title: 'Terms of Service | Femiro Designs', description: 'Terms for using the Femiro Designs website.' },
+      refund: { title: 'Refund Policy | Femiro Designs', description: 'Femiro returns and refund policy.' },
+      privacy: { title: 'Privacy Policy | Femiro Designs', description: 'How Femiro handles customer information.' }
+    }
+    const current = metadata[page]
+    document.title = current.title
+    let description = document.querySelector('meta[name="description"]')
+    if (!description) {
+      description = document.createElement('meta')
+      description.setAttribute('name', 'description')
+      document.head.appendChild(description)
+    }
+    description.setAttribute('content', current.description)
+  }, [page])
 
   const navigate = (path: string) => {
     window.history.pushState({}, '', path)
     const target = pathPage()
+
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
 
     if (path.includes('category=')) {
       const cat = new URLSearchParams(path.split('?')[1]).get('category')
@@ -124,10 +259,16 @@ export default function App() {
     }
     setSearchOpen(false)
     setMenuOpen(false)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const addToCart = (product: Product, size = 'M') => {
+    if (!userEmail) {
+      setToast('Please sign in to add items to your cart')
+      setTimeout(() => setToast(null), 3000)
+      navigate('/account')
+      return
+    }
+
     setCart(items => {
       const existing = items.find(i => i.product.id === product.id && i.size === size)
       if (existing) {
@@ -143,9 +284,6 @@ export default function App() {
         localStorage.setItem('femiro-viewed-products', JSON.stringify(viewed))
       }
     } catch (e) {}
-
-    // Open cart drawer immediately
-    setCartOpen(true)
 
     setToast(`Added ${product.name} (${size}) to bag`)
     setTimeout(() => setToast(null), 3000)
@@ -163,27 +301,23 @@ export default function App() {
     }
   }
 
-  const handlePlaceOrder = (deliveryAddress: string, total: number) => {
-    const newOrder: Order = {
-      id: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      date: new Date().toISOString().split('T')[0],
-      items: cart.map(item => ({
-        id: item.product.id,
-        name: item.product.name,
-        price: item.product.price,
-        image: item.product.image,
-        qty: item.qty,
-        size: item.size
-      })),
-      total,
-      status: 'Processing',
-      deliveryAddress
-    }
-    setOrders(prev => [newOrder, ...prev])
+  const handlePlaceOrder = async (_deliveryAddress: string, _total: number) => {
     setCart([])
+    if (userId) {
+      try {
+        setOrders(await loadOrders(userId, userRole === 'admin' || userRole === 'employee'))
+      } catch (error) {
+        console.error('Order refresh failed', error)
+      }
+    }
     setToast('🎉 Order placed successfully! View in Account.')
     setTimeout(() => setToast(null), 4000)
     navigate('/account')
+  }
+
+  const refreshOrders = async () => {
+    if (!userId) return
+    setOrders(await loadOrders(userId, userRole === 'admin' || userRole === 'employee'))
   }
 
   const result = useMemo(
@@ -204,6 +338,7 @@ export default function App() {
           cartCount={cart.reduce((s, i) => s + i.qty, 0)}
           setMenuOpen={setMenuOpen}
           isAdmin={isAdmin}
+          userRole={userRole}
           search={search}
           setSearch={setSearch}
           searchResult={result}
@@ -220,6 +355,7 @@ export default function App() {
           onWish={toggleWish}
           onAdd={p => addToCart(p, 'M')}
           onOpen={product => navigate(`/product/${product.id}`)}
+          heroContent={heroContent}
         />
       )}
 
@@ -231,6 +367,7 @@ export default function App() {
           onWish={toggleWish}
           onAdd={p => addToCart(p, 'M')}
           onOpen={product => navigate(`/product/${product.id}`)}
+          categories={categories}
           initialCategory={currentCategory}
           onCategoryChange={cat => navigate(cat === 'All' ? '/shop' : `/shop?category=${encodeURIComponent(cat)}`)}
         />
@@ -246,6 +383,9 @@ export default function App() {
           setIsAdmin={setIsAdmin}
           userEmail={userEmail}
           setUserEmail={setUserEmail}
+          userId={userId}
+          userRole={userRole}
+          setUserRole={setUserRole}
         />
       )}
 
@@ -253,7 +393,8 @@ export default function App() {
         <CartPage
           cart={cart}
           setCart={setCart}
-          addresses={addresses}
+          addresses={userEmail ? addresses : []}
+          discounts={discounts}
           navigate={navigate}
           onPlaceOrder={handlePlaceOrder}
         />
@@ -280,7 +421,37 @@ export default function App() {
         />
       )}
 
-      {page === 'cms' && (isAdmin ? <CMSPage products={products} setProducts={setProducts} orders={orders} /> : <AccountPage navigate={navigate} addresses={addresses} setAddresses={setAddresses} orders={orders} isAdmin={isAdmin} setIsAdmin={setIsAdmin} userEmail={userEmail} setUserEmail={setUserEmail} />)}
+      {page === 'cms' &&
+        (isAdmin ? (
+          <CMSPage
+            products={products}
+            setProducts={setProducts}
+            orders={orders}
+            categories={categories}
+            setCategories={setCategories}
+            heroContent={heroContent}
+            setHeroContent={setHeroContent}
+            discounts={discounts}
+            setDiscounts={setDiscounts}
+            userId={userId}
+            refreshOrders={refreshOrders}
+            userRole={userRole}
+          />
+        ) : (
+          <AccountPage
+            navigate={navigate}
+            addresses={addresses}
+            setAddresses={setAddresses}
+            orders={orders}
+            isAdmin={isAdmin}
+            setIsAdmin={setIsAdmin}
+            userEmail={userEmail}
+            setUserEmail={setUserEmail}
+            userId={userId}
+            userRole={userRole}
+            setUserRole={setUserRole}
+          />
+        ))}
 
       {page === 'new-arrivals' && (
         <NewArrivalsPage
@@ -291,6 +462,10 @@ export default function App() {
           onOpen={product => navigate(`/product/${product.id}`)}
         />
       )}
+
+      {page === 'terms' && <LegalPage kind="terms" />}
+      {page === 'refund' && <LegalPage kind="refund" />}
+      {page === 'privacy' && <LegalPage kind="privacy" />}
 
       {/* Global Toast Notification */}
       {toast && (
@@ -332,33 +507,24 @@ export default function App() {
         navigate={navigate}
       />
 
-      <aside className={menuOpen ? 'mobile-menu open' : 'mobile-menu'}>
-        <button className="icon-button" onClick={() => setMenuOpen(false)} aria-label="Close menu">
-          <X size={24} />
-        </button>
-        <button onClick={() => navigate('/shop')}>Shop All</button>
-        <button onClick={() => navigate('/cart')}>Cart Bag</button>
-        <button onClick={() => navigate('/account')}>Account & Saved Locations</button>
-        <button onClick={() => navigate('/wishlist')}>Wishlist</button>
-        {isAdmin && (
-          <button onClick={() => navigate('/cms')} style={{ color: 'var(--wine)' }}>
-            CMS Dashboard
-          </button>
-        )}
-      </aside>
 
       <nav className="bottom-nav">
         <button onClick={() => navigate('/')}>
-          <ShoppingBag size={18} />
+          <House size={18} strokeWidth={1.8} />
           <span>Home</span>
         </button>
         <button onClick={() => navigate('/shop')}>
-          <Sparkles size={18} />
+          <Store size={18} strokeWidth={1.8} />
           <span>Shop</span>
         </button>
         <button onClick={() => navigate('/cart')}>
-          <ShoppingBag size={18} />
-          <span>Cart ({cart.reduce((sum, i) => sum + i.qty, 0)})</span>
+          <span className="bottom-cart-icon">
+            <ShoppingCart size={18} strokeWidth={1.8} />
+            {cart.reduce((sum, i) => sum + i.qty, 0) > 0 && (
+              <b className="bottom-cart-count">{cart.reduce((sum, i) => sum + i.qty, 0)}</b>
+            )}
+          </span>
+          <span>Cart</span>
         </button>
         <button onClick={() => navigate('/account')}>
           <UserRound size={18} />

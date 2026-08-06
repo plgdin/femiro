@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ArrowRight, ChevronDown } from 'lucide-react'
-import type { Product } from '../types'
+import type { Product, HeroContent } from '../types'
 import { ProductCard } from '../components/ProductCard'
+
+import { getPersonalizedRecommendations } from '../services/recommendationService'
 
 export function HomePage({
   navigate,
@@ -9,7 +11,8 @@ export function HomePage({
   wished,
   onWish,
   onAdd,
-  onOpen
+  onOpen,
+  heroContent
 }: {
   navigate: (path: string) => void
   products: Product[]
@@ -17,89 +20,34 @@ export function HomePage({
   onWish: (id: number) => void
   onAdd: (product: Product) => void
   onOpen: (product: Product) => void
+  heroContent?: HeroContent
 }) {
   const [recommended, setRecommended] = useState<Product[]>([])
 
   useEffect(() => {
-    // 1. Get viewed products from localStorage
-    let viewedIds: number[] = []
-    try {
-      viewedIds = JSON.parse(localStorage.getItem('femiro-viewed-products') || '[]')
-    } catch (e) {}
-
-    // 2. Get purchased products from orders
-    let purchasedIds: number[] = []
-    try {
-      const orders = JSON.parse(localStorage.getItem('femiro-orders') || '[]')
-      purchasedIds = orders.flatMap((ord: any) => ord.items?.map((item: any) => item.id) || [])
-    } catch (e) {}
-
-    // Combine all interaction IDs
-    const interactedIds = Array.from(new Set([...viewedIds, ...purchasedIds]))
-
-    // Find the products corresponding to interacted IDs
-    const interactedProducts = products.filter(p => interactedIds.includes(p.id))
-
-    // Count favorite product categories (types)
-    const typeCounts: Record<string, number> = {}
-    interactedProducts.forEach(p => {
-      if (p.type) {
-        typeCounts[p.type] = (typeCounts[p.type] || 0) + 1
-      }
-    })
-
-    // Find top favorite type
-    let favoriteType = ''
-    let maxCount = 0
-    Object.entries(typeCounts).forEach(([type, count]) => {
-      if (count > maxCount) {
-        maxCount = count
-        favoriteType = type
-      }
-    })
-
-    let picks: Product[] = []
-    if (favoriteType) {
-      // Prioritize items of favorite type
-      const preferred = products.filter(p => p.type === favoriteType)
-      const others = products.filter(p => p.type !== favoriteType)
-      
-      // Shuffle them slightly to make it look premium
-      const shuffledPreferred = [...preferred].sort(() => 0.5 - Math.random())
-      const shuffledOthers = [...others].sort(() => 0.5 - Math.random())
-      
-      picks = [...shuffledPreferred, ...shuffledOthers].slice(0, 4)
-    }
-
-    // Fallback: if no favorite type or not enough recommendations, pick random
-    if (picks.length < 4) {
-      const remaining = products.filter(p => !picks.find(x => x.id === p.id))
-      const randomPicks = [...remaining].sort(() => 0.5 - Math.random()).slice(0, 4 - picks.length)
-      picks = [...picks, ...randomPicks]
-    }
-
-    setRecommended(picks)
-  }, [products])
+    const recs = getPersonalizedRecommendations(products, [], wished, 4)
+    setRecommended(recs)
+  }, [products, wished])
 
   return (
     <main id="top">
 
       <section className="hero">
         <img
-          src="https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=2000&q=90"
+          src={heroContent?.imageUrl || 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=2000&q=90'}
           alt="Woman wearing Femiro collection"
         />
         <div className="hero-shade" />
         <div className="hero-copy">
-          <p className="eyebrow">MONSOON 2026</p>
-          <h1>
-            Soft power,
-            <br />
-            beautifully worn.
-          </h1>
+          <h1>{heroContent?.headline || 'Soft power, beautifully worn.'}</h1>
+          {heroContent?.subtitle && (
+            <p>
+              {heroContent.subtitle}
+            </p>
+          )}
           <div>
-            <button className="button light" onClick={() => navigate('/shop')}>
-              Shop the collection <ArrowRight size={16} />
+            <button className="button light" onClick={() => navigate(heroContent?.buttonLink || '/shop')}>
+              {heroContent?.buttonText || 'Shop the collection'} <ArrowRight size={16} />
             </button>
             <button
               className="text-link"

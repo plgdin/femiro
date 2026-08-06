@@ -35,8 +35,8 @@ export function Footer({ navigate, isAdmin }: { navigate: (path: string) => void
             <li><button onClick={() => navigate('/account')}>My Account</button></li>
             <li><button onClick={() => navigate('/cart')}>Shopping Bag</button></li>
             <li><button onClick={() => navigate('/wishlist')}>Wishlist</button></li>
-            <li><button>Shipping & Returns</button></li>
-            <li><button>Privacy Policy</button></li>
+            <li><button onClick={() => navigate('/refund')}>Refund Policy</button></li>
+            <li><button onClick={() => navigate('/privacy')}>Privacy Policy</button></li>
             {isAdmin && (
               <li>
                 <button className="admin-link" onClick={() => navigate('/cms')}>
@@ -47,22 +47,13 @@ export function Footer({ navigate, isAdmin }: { navigate: (path: string) => void
           </ul>
         </div>
 
-        {/* Newsletter Column */}
-        <div className="footer-col newsletter-col">
-          <h3>Stay In The Loop</h3>
-          <p>Subscribe to receive early access to new edits, private sales, and fashion events.</p>
-          <form className="footer-form" onSubmit={e => e.preventDefault()}>
-            <input type="email" placeholder="Your email address" aria-label="Email address" required />
-            <button type="submit">Join</button>
-          </form>
-        </div>
       </div>
 
       {/* Bottom Footer Bar */}
       <div className="footer-bottom">
         <span>© 2026 Femiro Designs. All rights reserved.</span>
         <div className="footer-links">
-          <button>Terms of Use</button>
+          <button onClick={() => navigate('/terms')}>Terms of Use</button>
           <button>Sitemap</button>
         </div>
       </div>

@@ -1,19 +1,40 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Trash2, Lock, Gift, Tag, ChevronDown, ChevronUp, ArrowLeft, ShoppingCart } from 'lucide-react'
-import type { CartItem, Address } from '../types'
+import { Trash2, Lock, Gift, Tag, ChevronDown, ChevronUp, ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
+import type { CartItem, Address, DiscountCode } from '../types'
 import { money } from '../data/initialData'
+import { processRazorpayPayment } from '../services/razorpayService'
+import { AddressDropdown } from '../components/AddressDropdown'
+
+type PaidInvoice = {
+  orderId: string
+  paymentId: string
+  date: string
+  address: string
+  items: CartItem[]
+  total: number
+}
+
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana',
+  'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+  'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu and Kashmir',
+  'Ladakh', 'Puducherry'
+]
 
 export function CartPage({
   cart,
   setCart,
   addresses,
+  discounts,
   navigate,
   onPlaceOrder
 }: {
   cart: CartItem[]
   setCart: Dispatch<SetStateAction<CartItem[]>>
   addresses: Address[]
+  discounts: DiscountCode[]
   navigate: (path: string) => void
   onPlaceOrder: (selectedAddr: string, total: number) => void
 }) {
@@ -22,23 +43,168 @@ export function CartPage({
   const [discount, setDiscount] = useState(0)
   const [couponApplied, setCouponApplied] = useState(false)
   const [showCouponInput, setShowCouponInput] = useState(false)
-  const [customAddr, setCustomAddr] = useState('')
+  const [addressModalOpen, setAddressModalOpen] = useState(false)
+  const [addressConfirmed, setAddressConfirmed] = useState(false)
+  const [shippingName, setShippingName] = useState('')
+  const [shippingPhone, setShippingPhone] = useState('')
+  const [shippingStreet, setShippingStreet] = useState('')
+  const [shippingAddress2, setShippingAddress2] = useState('')
+  const [shippingCity, setShippingCity] = useState('')
+  const [shippingState, setShippingState] = useState('')
+  const [shippingPincode, setShippingPincode] = useState('')
+  const [pincodeStatus, setPincodeStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle')
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
+  const [paymentFailure, setPaymentFailure] = useState<string | null>(null)
+  const [paidInvoice, setPaidInvoice] = useState<PaidInvoice | null>(null)
 
   const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.qty, 0)
-  const shippingCost = subtotal > 2999 ? 0 : 199
+  const shippingCost = subtotal > 2000 ? 0 : 59
+  const packingCost = 15
+  const gstAmount = Math.round(Math.max(0, subtotal - discount) * 0.05)
 
   const handleApplyCoupon = () => {
-    if (coupon.trim().toUpperCase() === 'FEMIRO10') {
-      setDiscount(Math.round(subtotal * 0.1))
+    const found = discounts.find(item => item.code === coupon.trim().toUpperCase() && item.active)
+    if (found) {
+      const eligibleSubtotal = cart.reduce((sum, item) => {
+        const eligible = found.scope === 'storewide' ||
+          (found.scope === 'category' && item.product.type === found.categoryTarget) ||
+          (found.scope === 'products' && found.productIds?.includes(item.product.id))
+        return eligible ? sum + item.product.price * item.qty : sum
+      }, 0)
+      if (eligibleSubtotal <= 0 || eligibleSubtotal < found.minSpend) {
+        alert('This coupon does not apply to items in your cart.')
+        return
+      }
+      const value = found.type === 'fixed'
+        ? found.fixedAmount || 0
+        : Math.round(eligibleSubtotal * found.discountPercent / 100)
+      setDiscount(Math.min(value, eligibleSubtotal))
       setCouponApplied(true)
     } else {
-      alert('Invalid coupon. Try "FEMIRO10" for 10% off.')
+      alert('Invalid or unavailable coupon.')
     }
   }
 
   const finalTotal = Math.max(0, subtotal - discount)
   const activeAddress = addresses.find(a => a.id === selectedAddrId) || addresses[0]
   const totalItemCount = cart.reduce((sum, i) => sum + i.qty, 0)
+  const estimatedTotal = finalTotal + gstAmount + shippingCost + packingCost
+  const animatedTotalRef = useRef(estimatedTotal)
+  const [displayedTotal, setDisplayedTotal] = useState(estimatedTotal)
+
+  useEffect(() => {
+    const start = animatedTotalRef.current
+    const difference = estimatedTotal - start
+    if (difference === 0) return
+    const startedAt = performance.now()
+    const duration = 650
+    let frame = 0
+    const animate = (now: number) => {
+      const progress = Math.min((now - startedAt) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const value = Math.round(start + difference * eased)
+      animatedTotalRef.current = value
+      setDisplayedTotal(value)
+      if (progress < 1) frame = requestAnimationFrame(animate)
+    }
+    frame = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frame)
+  }, [estimatedTotal])
+
+  useEffect(() => {
+    if (!activeAddress) return
+    setShippingName(activeAddress.name)
+    setShippingPhone(activeAddress.mobile)
+    setShippingStreet(activeAddress.street)
+    setShippingAddress2(activeAddress.landmark || '')
+    setShippingCity(activeAddress.city)
+    setShippingState(activeAddress.state)
+    setShippingPincode(activeAddress.pincode)
+  }, [activeAddress?.id])
+
+  const verifyPincode = async () => {
+    const pincode = shippingPincode.trim()
+    if (!/^\d{6}$/.test(pincode)) {
+      setPincodeStatus(pincode ? 'invalid' : 'idle')
+      return
+    }
+    setPincodeStatus('checking')
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`)
+      const result = await response.json() as Array<{ Status?: string; PostOffice?: Array<{ District?: string; State?: string }> }>
+      const office = result[0]?.Status === 'Success' ? result[0]?.PostOffice?.[0] : undefined
+      if (!office) {
+        setPincodeStatus('invalid')
+        return
+      }
+      if (office.District) setShippingCity(office.District)
+      if (office.State && INDIAN_STATES.includes(office.State)) setShippingState(office.State)
+      setPincodeStatus('valid')
+    } catch {
+      setPincodeStatus('invalid')
+    }
+  }
+
+  if (paidInvoice) {
+    return (
+      <main className="page-shell premium-cart-page invoice-page">
+        <section className="invoice-card" id="print-invoice">
+          <div className="invoice-success-mark">✓</div>
+          <p className="eyebrow">PAYMENT CONFIRMED</p>
+          <h1 className="cart-title">Thank you for your order</h1>
+          <p className="cart-subtitle">Your payment went through. Keep this invoice for your records.</p>
+
+          <div className="invoice-meta">
+            <span>Order ID <b>{paidInvoice.orderId}</b></span>
+            <span>Payment ID <b>{paidInvoice.paymentId}</b></span>
+            <span>Date <b>{paidInvoice.date}</b></span>
+          </div>
+
+          <div className="invoice-items">
+            {paidInvoice.items.map(item => (
+              <div className="invoice-item" key={`${item.product.id}-${item.size}`}>
+                <span>{item.product.name} · {item.size} × {item.qty}</span>
+                <b>{money(item.product.price * item.qty)}</b>
+              </div>
+            ))}
+          </div>
+
+          <div className="invoice-total">
+            <span>Total paid</span>
+            <b>{money(paidInvoice.total)}</b>
+          </div>
+          <p className="invoice-address">Delivering to: {paidInvoice.address}</p>
+          <div className="invoice-actions no-print">
+            <button className="button dark" type="button" onClick={() => window.print()}>Print Invoice</button>
+            <button className="button secondary" type="button" onClick={() => navigate('/account')}>View Account</button>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  if (paymentFailure) {
+    return (
+      <main className="page-shell premium-cart-page payment-failure-page">
+        <section className="payment-failure-card">
+          <div className="payment-failure-icon"><AlertCircle size={30} /></div>
+          <p className="eyebrow">PAYMENT NOT COMPLETED</p>
+          <h1>Payment failed</h1>
+          <p>We could not confirm this payment. Your cart is safe. No new order was confirmed.</p>
+          <div className="payment-failure-reason">We could not complete your payment. Please try again.</div>
+          <p className="payment-failure-help">
+            If money was deducted, do not pay again immediately. Email <a href="mailto:femirodesigns@gmail.com">femirodesigns@gmail.com</a> or call <a href="tel:+919562637753">+91 95626 37753</a>. Share your payment reference and registered email.
+          </p>
+          <div className="payment-failure-actions">
+            <button className="button dark" type="button" onClick={() => { setPaymentFailure(null); setPaymentError(null) }}>Try Payment Again</button>
+            <button className="button secondary" type="button" onClick={() => navigate('/shop')}>Continue Shopping</button>
+          </div>
+        </section>
+      </main>
+    )
+  }
 
   if (cart.length === 0) {
     return (
@@ -173,72 +339,135 @@ export function CartPage({
                   </b>
                 </div>
 
+                <div className="detail-row">
+                  <span>Packing</span>
+                  <b>{money(packingCost)}</b>
+                </div>
+
                 {discount > 0 && (
                   <div className="detail-row discount-row">
-                    <span>Discount (10%)</span>
+                    <span>Discount</span>
                     <b>-{money(discount)}</b>
                   </div>
                 )}
 
+                <div className="detail-row">
+                  <span>GST (5%)</span>
+                  <b>{money(gstAmount)}</b>
+                </div>
+
                 {/* Delivery Location Field inside checkout details */}
                 <div className="delivery-summary-section">
                   <label>Shipping Destination</label>
-                  {addresses.length > 0 ? (
-                    <select value={selectedAddrId} onChange={e => setSelectedAddrId(e.target.value)}>
-                      {addresses.map(a => (
-                        <option key={a.id} value={a.id}>
-                          [{a.tag}] {a.street}, {a.city}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <input
-                        type="text"
-                        placeholder="Enter shipping address manually"
-                        value={customAddr}
-                        onChange={e => setCustomAddr(e.target.value)}
-                        className="custom-address-field"
-                      />
-                      <button
-                        onClick={() => navigate('/account')}
-                        className="manage-address-btn"
-                        type="button"
-                      >
-                        + Manage addresses in Account
-                      </button>
-                    </div>
-                  )}
+                  <button type="button" className="checkout-address-preview" onClick={() => { setAddressConfirmed(false); setAddressModalOpen(true) }}>
+                    {shippingStreet && shippingCity && shippingPincode
+                      ? `${shippingStreet}${shippingAddress2 ? `, ${shippingAddress2}` : ''}, ${shippingCity}, ${shippingState} - ${shippingPincode}`
+                      : 'Add shipping address'}
+                    <span>Change</span>
+                  </button>
                 </div>
 
                 <div className="divider-line-horizontal" />
 
                 <div className="detail-row total-row">
                   <span>Estimated Total</span>
-                  <span className="price-total-val">{money(finalTotal + shippingCost)}</span>
+                  <span className="price-total-val total-rolling-value">{money(displayedTotal)}</span>
                 </div>
 
                 <p className="taxes-note">Taxes included. Shipping calculated at checkout.</p>
               </div>
 
+              {paymentError && (
+                <div style={{
+                  padding: '10px 14px',
+                  marginBottom: '16px',
+                  borderRadius: '8px',
+                  backgroundColor: '#fdf2f2',
+                  border: '1px solid #f8b4b4',
+                  color: '#9b1c1c',
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <AlertCircle size={16} />
+                  <span>{paymentError}</span>
+                </div>
+              )}
+
               <button
                 className="button dark product-add-btn proceed-checkout-btn"
                 type="button"
+                disabled={isProcessing}
                 onClick={() => {
-                  const addrStr = activeAddress
-                    ? `${activeAddress.street}, ${activeAddress.city}`
-                    : customAddr.trim()
+                  if (!addressConfirmed) {
+                    setAddressModalOpen(true)
+                    return
+                  }
+                  const addrStr = `${shippingStreet.trim()}${shippingAddress2.trim() ? `, ${shippingAddress2.trim()}` : ''}, ${shippingCity.trim()}, ${shippingState.trim()} - ${shippingPincode.trim()}`
 
-                  if (!addrStr) {
-                    alert('Please enter or select a delivery address.')
+                  if (!shippingName.trim() || !shippingPhone.trim() || !shippingStreet.trim() || !shippingCity.trim() || !shippingState.trim() || !shippingPincode.trim()) {
+                    alert('Please complete your name, phone, address, city, state, and pincode.')
                     return
                   }
 
-                  const totalWithShipping = finalTotal + shippingCost
-                  onPlaceOrder(addrStr, totalWithShipping)
+                  const totalWithShipping = finalTotal + gstAmount + shippingCost + packingCost
+                  setIsProcessing(true)
+                  setPaymentError(null)
+
+                  processRazorpayPayment({
+                    amount: totalWithShipping,
+                    items: cart.map(item => ({ id: item.product.id, qty: item.qty, size: item.size })),
+                    deliveryAddress: addrStr,
+                    coupon: couponApplied ? coupon.trim().toUpperCase() : undefined,
+                    phone: shippingPhone,
+                    name: 'Femiro Storefront',
+                    description: `Order for ${totalItemCount} item(s)`,
+                    prefill: {
+                      name: shippingName,
+                      contact: shippingPhone
+                    },
+                    onSuccess: (_response) => {
+                      setIsProcessing(false)
+                      setIsVerifying(false)
+                      setPaidInvoice({
+                        orderId: _response.razorpay_order_id,
+                        paymentId: _response.razorpay_payment_id,
+                        date: new Date().toLocaleDateString('en-IN'),
+                        address: addrStr,
+                        items: cart,
+                        total: totalWithShipping
+                      })
+                      void onPlaceOrder(addrStr, totalWithShipping)
+                    },
+                    onVerifying: () => {
+                      setIsProcessing(true)
+                      setIsVerifying(true)
+                      setPaymentError(null)
+                    },
+                    onError: (errMessage) => {
+                      setIsProcessing(false)
+                      setIsVerifying(false)
+                      console.error('Payment failed', errMessage)
+                      setPaymentError('Payment could not be completed.')
+                      setPaymentFailure('Payment could not be completed.')
+                    },
+                    onDismiss: () => {
+                      setIsProcessing(false)
+                      setIsVerifying(false)
+                    }
+                  })
                 }}
               >
-                <Lock size={15} /> Proceed to Checkout
+                {isProcessing ? (
+                  <>
+                    <Loader2 size={15} className="spin" style={{ animation: 'spin 1s linear infinite' }} /> {isVerifying ? 'Confirming Payment...' : 'Opening Secure Checkout...'}
+                  </>
+                ) : (
+                  <>
+                    <Lock size={15} /> Pay with Razorpay
+                  </>
+                )}
               </button>
 
               <div className="razorpay-badge">
@@ -262,19 +491,68 @@ export function CartPage({
               <div className={`coupon-accordion-content ${showCouponInput ? 'show' : ''}`}>
                 <div className="coupon-inline-box">
                   <input
-                    placeholder="PROMO CODE (e.g. FEMIRO10)"
+                    placeholder="Enter promo code"
                     value={coupon}
                     onChange={e => setCoupon(e.target.value)}
                     disabled={couponApplied}
                   />
-                  <button onClick={handleApplyCoupon} disabled={couponApplied}>
-                    {couponApplied ? 'Applied' : 'Apply'}
+                  <button onClick={() => {
+                    if (couponApplied) {
+                      setCoupon('')
+                      setDiscount(0)
+                      setCouponApplied(false)
+                    } else {
+                      handleApplyCoupon()
+                    }
+                  }}>
+                    {couponApplied ? 'Remove' : 'Apply'}
                   </button>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        {addressModalOpen && (
+          <div className="modal-overlay checkout-address-overlay" onClick={() => setAddressModalOpen(false)}>
+            <div className="modal-card checkout-address-modal" onClick={event => event.stopPropagation()}>
+              <div className="checkout-address-modal-header">
+                <div>
+                  <p className="eyebrow">DELIVERY DETAILS</p>
+                  <h3>Where should we deliver?</h3>
+                </div>
+                <button type="button" onClick={() => setAddressModalOpen(false)} aria-label="Close">×</button>
+              </div>
+              {addresses.length > 0 && (
+                <AddressDropdown
+                  addresses={addresses}
+                  selectedId={selectedAddrId}
+                  onSelect={id => { setSelectedAddrId(id); setAddressConfirmed(false) }}
+                  customAddr=""
+                  setCustomAddr={() => undefined}
+                  onManageAddresses={() => navigate('/account')}
+                />
+              )}
+              <div className="checkout-address-form">
+                <label>Full Name<input value={shippingName} onChange={e => setShippingName(e.target.value)} required /></label>
+                <label>Phone Number<input type="tel" value={shippingPhone} onChange={e => setShippingPhone(e.target.value)} required /></label>
+                <label className="full">Address 1<input value={shippingStreet} onChange={e => setShippingStreet(e.target.value)} placeholder="House / street / area" required /></label>
+                <label className="full">Address 2 <span className="optional-field">(optional)</span><input value={shippingAddress2} onChange={e => setShippingAddress2(e.target.value)} placeholder="Apartment, floor, landmark" /></label>
+                <label>City / Location<input value={shippingCity} onChange={e => setShippingCity(e.target.value)} required /></label>
+                <label>State<select value={shippingState} onChange={e => setShippingState(e.target.value)} required><option value="">Choose state</option>{INDIAN_STATES.map(state => <option key={state} value={state}>{state}</option>)}</select></label>
+                <label>Pincode<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={shippingPincode} onChange={e => { setShippingPincode(e.target.value.replace(/\D/g, '').slice(0, 6)); setPincodeStatus('idle') }} onBlur={() => void verifyPincode()} required />{pincodeStatus === 'checking' && <small>Checking pincode…</small>}{pincodeStatus === 'valid' && <small className="pincode-valid">Pincode verified</small>}{pincodeStatus === 'invalid' && <small className="pincode-invalid">Enter a valid Indian pincode</small>}</label>
+              </div>
+              <button type="button" className="button dark checkout-address-continue" onClick={() => {
+                if (!shippingName.trim() || !shippingPhone.trim() || !shippingStreet.trim() || !shippingCity.trim() || !shippingState.trim() || !shippingPincode.trim()) {
+                  alert('Please complete your name, phone, address, city, state, and pincode.')
+                  return
+                }
+                setAddressConfirmed(true)
+                setAddressModalOpen(false)
+              }}>Continue to payment</button>
+            </div>
+          </div>
+        )}
     </main>
   )
 }

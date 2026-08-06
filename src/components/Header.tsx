@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Menu, Search, UserRound, Heart, ShoppingCart, X } from 'lucide-react'
 import { Logo } from './Logo'
+import { trackSearch } from '../services/recommendationService'
 import type { Page, Product } from '../types'
 
 export function Header({
@@ -11,6 +12,7 @@ export function Header({
   cartCount,
   setMenuOpen,
   isAdmin,
+  userRole = 'user',
   search = '',
   setSearch,
   searchResult = [],
@@ -23,6 +25,7 @@ export function Header({
   cartCount: number
   setMenuOpen: (val: boolean) => void
   isAdmin: boolean
+  userRole?: 'admin' | 'employee' | 'user'
   search?: string
   setSearch?: (val: string) => void
   searchResult?: Product[]
@@ -51,11 +54,7 @@ export function Header({
   }
 
   return (
-    <header className={scrolled ? 'site-header scrolled' : 'site-header'}>
-      <button className="icon-button mobile-only" onClick={() => setMenuOpen(true)} aria-label="Open menu">
-        <Menu size={26} />
-      </button>
-
+    <header className={`${scrolled ? 'site-header scrolled' : 'site-header'} ${page === 'cms' ? 'cms-site-header' : ''} ${isAdmin ? 'staff-site-header' : ''}`}>
       <button className="brand-button" onClick={() => navigate('/')} aria-label="Femiro home">
         <Logo />
       </button>
@@ -102,6 +101,16 @@ export function Header({
         >
           New Arrivals
         </button>
+
+        {isAdmin && (
+          <button
+            className={page === 'cms' ? 'active nav-highlight' : 'nav-highlight'}
+            onClick={() => navigate('/cms')}
+            style={{ color: 'var(--wine)', fontWeight: 700 }}
+          >
+            CMS
+          </button>
+        )}
       </nav>
 
       <div className="actions">
@@ -118,7 +127,10 @@ export function Header({
                 autoFocus
                 type="text"
                 value={search}
-                onChange={e => setSearch && setSearch(e.target.value)}
+                onChange={e => {
+                  if (setSearch) setSearch(e.target.value)
+                  trackSearch(e.target.value)
+                }}
                 placeholder="Search kurtis, co-ords, sets..."
                 className="expanding-search-input"
               />
@@ -182,7 +194,7 @@ export function Header({
         {/* CMS Button ONLY shown if logged in as Admin */}
         {isAdmin && (
           <button className="admin-badge-btn" onClick={() => navigate('/cms')} title="Admin CMS Panel">
-            Admin CMS
+            {userRole === 'employee' ? 'Employee CMS' : 'Admin CMS'}
           </button>
         )}
       </div>

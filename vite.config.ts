@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
-import { handleCreateOrder } from './api/create-order'
-import { handleVerifyPayment } from './api/verify-payment'
+import { handleCreateOrder } from './api/create-order.ts'
+import { handleVerifyPayment } from './api/verify-payment.ts'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')

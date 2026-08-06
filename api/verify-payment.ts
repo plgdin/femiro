@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import Razorpay from 'razorpay'
-import { getSupabaseAdmin, requireUser } from './auth'
+import { getSupabaseAdmin, requireUser } from './auth.ts'
 
 export async function handleVerifyPayment(req: any, body: any) {
   const user = await requireUser(req)

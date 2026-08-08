@@ -48,7 +48,7 @@ const AVAILABLE_COLORS = [
   { name: 'Gold', hex: '#d4af37' }
 ]
 
-const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size']
+const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', 'Free Size']
 const DEFAULT_CATEGORY_OPTIONS = ['Kurtis', 'Salwar Sets', 'Co-ord Sets', 'Jewelry', 'Trousers', 'Dresses', 'Accessories']
 
 function AnimatedSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
@@ -99,7 +99,7 @@ export function CMSPage({
     eyebrow: 'MONSOON 2026',
     headline: 'Soft power, beautifully worn.',
     subtitle: 'Discover handcrafted drapes, co-ords, and festive couture designed for modern grace.',
-    imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=2000&q=90',
+    imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1200&fm=webp&q=80',
     buttonText: 'Shop the collection',
     buttonLink: '/shop'
   },
@@ -300,7 +300,7 @@ export function CMSPage({
       setDescription(prod.description)
       setHasColors(prod.hasColors || false)
       setSelectedColors(prod.colors || ['#842952'])
-      setSelectedSizes(prod.sizes || ['S', 'M', 'L', 'XL'])
+      setSelectedSizes(prod.sizes || ['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'])
     } else {
       setEditingProduct(null)
       setName('')
@@ -312,7 +312,7 @@ export function CMSPage({
       setDescription('')
       setHasColors(false)
       setSelectedColors(['#842952'])
-      setSelectedSizes(['S', 'M', 'L', 'XL'])
+      setSelectedSizes(['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL'])
     }
     setIsFormOpen(true)
   }

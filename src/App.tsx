@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
 import { House, Store, ShoppingCart, UserRound, CheckCircle2, X, Heart, ShieldCheck, Layers, ChevronRight } from 'lucide-react'
 import type { Product, Address, Order, CartItem, Page, HeroContent, DiscountCode } from './types'
 import { stored } from './data/initialData'
@@ -12,20 +12,21 @@ import { Logo } from './components/Logo'
 import { HomePage } from './pages/HomePage'
 import { ShopPage } from './pages/ShopPage'
 import { ProductPage } from './pages/ProductPage'
-import { AccountPage } from './pages/AccountPage'
 import { CartPage } from './pages/CartPage'
 import { WishlistPage } from './pages/WishlistPage'
-import { CMSPage } from './pages/CMSPage'
 import { NewArrivalsPage } from './pages/NewArrivalsPage'
-import { LegalPage } from './pages/LegalPage'
 import { supabase } from './lib/supabase'
 import { loadAddresses, loadCategories, loadDiscounts, loadHero, loadOrders, loadProducts, saveHero, syncCategories, syncDiscounts } from './services/storeService'
+
+const CMSPage = lazy(() => import('./pages/CMSPage').then(m => ({ default: m.CMSPage })))
+const AccountPage = lazy(() => import('./pages/AccountPage').then(m => ({ default: m.AccountPage })))
+const LegalPage = lazy(() => import('./pages/LegalPage').then(m => ({ default: m.LegalPage })))
 
 const DEFAULT_HERO: HeroContent = {
   eyebrow: 'MONSOON 2026',
   headline: 'Soft power, beautifully worn.',
   subtitle: 'Discover handcrafted drapes, co-ords, and festive couture designed for modern grace.',
-  imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=2000&q=90',
+  imageUrl: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1200&fm=webp&q=80',
   buttonText: 'Shop the collection',
   buttonLink: '/shop'
 }
@@ -127,6 +128,21 @@ export default function App() {
       window.removeEventListener('scroll', onScroll)
     }
   }, [])
+
+  useEffect(() => {
+    let title = 'Femiro Designs | Elegant womenswear'
+    if (page === 'shop') title = 'Shop Collection | Femiro Designs'
+    else if (page === 'account') title = 'Account | Femiro Designs'
+    else if (page === 'wishlist') title = 'Saved Items | Femiro Designs'
+    else if (page === 'cart') title = 'Shopping Bag | Femiro Designs'
+    else if (page === 'cms') title = 'Store Management CMS | Femiro Designs'
+    else if (page === 'new-arrivals') title = 'New Arrivals | Femiro Designs'
+    else if (page === 'terms') title = 'Terms of Service | Femiro Designs'
+    else if (page === 'refund') title = 'Refund & Return Policy | Femiro Designs'
+    else if (page === 'privacy') title = 'Privacy Policy | Femiro Designs'
+    else if (page === 'product' && selected) title = `${selected.name} | Femiro Designs`
+    document.title = title
+  }, [page, selected])
 
   useEffect(() => {
     let active = true
@@ -374,19 +390,21 @@ export default function App() {
       )}
 
       {page === 'account' && (
-        <AccountPage
-          navigate={navigate}
-          addresses={addresses}
-          setAddresses={setAddresses}
-          orders={orders}
-          isAdmin={isAdmin}
-          setIsAdmin={setIsAdmin}
-          userEmail={userEmail}
-          setUserEmail={setUserEmail}
-          userId={userId}
-          userRole={userRole}
-          setUserRole={setUserRole}
-        />
+        <Suspense fallback={<div className="page-shell" style={{ padding: '60px 20px', textAlign: 'center' }}>Loading account...</div>}>
+          <AccountPage
+            navigate={navigate}
+            addresses={addresses}
+            setAddresses={setAddresses}
+            orders={orders}
+            isAdmin={isAdmin}
+            setIsAdmin={setIsAdmin}
+            userEmail={userEmail}
+            setUserEmail={setUserEmail}
+            userId={userId}
+            userRole={userRole}
+            setUserRole={setUserRole}
+          />
+        </Suspense>
       )}
 
       {page === 'cart' && (
@@ -423,34 +441,38 @@ export default function App() {
 
       {page === 'cms' &&
         (isAdmin ? (
-          <CMSPage
-            products={products}
-            setProducts={setProducts}
-            orders={orders}
-            categories={categories}
-            setCategories={setCategories}
-            heroContent={heroContent}
-            setHeroContent={setHeroContent}
-            discounts={discounts}
-            setDiscounts={setDiscounts}
-            userId={userId}
-            refreshOrders={refreshOrders}
-            userRole={userRole}
-          />
+          <Suspense fallback={<div className="page-shell" style={{ padding: '60px 20px', textAlign: 'center' }}>Loading CMS...</div>}>
+            <CMSPage
+              products={products}
+              setProducts={setProducts}
+              orders={orders}
+              categories={categories}
+              setCategories={setCategories}
+              heroContent={heroContent}
+              setHeroContent={setHeroContent}
+              discounts={discounts}
+              setDiscounts={setDiscounts}
+              userId={userId}
+              refreshOrders={refreshOrders}
+              userRole={userRole}
+            />
+          </Suspense>
         ) : (
-          <AccountPage
-            navigate={navigate}
-            addresses={addresses}
-            setAddresses={setAddresses}
-            orders={orders}
-            isAdmin={isAdmin}
-            setIsAdmin={setIsAdmin}
-            userEmail={userEmail}
-            setUserEmail={setUserEmail}
-            userId={userId}
-            userRole={userRole}
-            setUserRole={setUserRole}
-          />
+          <Suspense fallback={<div className="page-shell" style={{ padding: '60px 20px', textAlign: 'center' }}>Loading...</div>}>
+            <AccountPage
+              navigate={navigate}
+              addresses={addresses}
+              setAddresses={setAddresses}
+              orders={orders}
+              isAdmin={isAdmin}
+              setIsAdmin={setIsAdmin}
+              userEmail={userEmail}
+              setUserEmail={setUserEmail}
+              userId={userId}
+              userRole={userRole}
+              setUserRole={setUserRole}
+            />
+          </Suspense>
         ))}
 
       {page === 'new-arrivals' && (
@@ -463,9 +485,21 @@ export default function App() {
         />
       )}
 
-      {page === 'terms' && <LegalPage kind="terms" />}
-      {page === 'refund' && <LegalPage kind="refund" />}
-      {page === 'privacy' && <LegalPage kind="privacy" />}
+      {page === 'terms' && (
+        <Suspense fallback={null}>
+          <LegalPage kind="terms" />
+        </Suspense>
+      )}
+      {page === 'refund' && (
+        <Suspense fallback={null}>
+          <LegalPage kind="refund" />
+        </Suspense>
+      )}
+      {page === 'privacy' && (
+        <Suspense fallback={null}>
+          <LegalPage kind="privacy" />
+        </Suspense>
+      )}
 
       {/* Global Toast Notification */}
       {toast && (

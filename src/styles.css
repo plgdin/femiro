@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&family=Poppins:wght@400;500;600;700&display=swap');
-
 :root {
   --wine: #842952;
   --plum: #762d4e;
@@ -17,30 +15,34 @@
   background: var(--paper);
 }
 
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .cms-page .modal-overlay {
     inset: 0;
     width: 100vw;
     max-width: 100vw;
     box-sizing: border-box;
-    padding: 8px !important;
+    padding: 12px 8px;
     overflow-x: hidden;
     overflow-y: auto;
+    align-items: flex-start;
   }
 
   .cms-page .cms-product-modal {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
+    max-height: calc(100svh - 24px) !important;
     box-sizing: border-box !important;
-    padding: 16px 12px !important;
-    overflow-x: hidden;
+    padding: 20px 14px !important;
+    overflow-y: auto;
+    border-radius: 14px !important;
   }
 
   .cms-page .cms-product-form,
   .cms-page .cms-product-form > *,
   .cms-page .cms-product-form .input-field {
     min-width: 0 !important;
+    width: 100%;
     max-width: 100%;
     box-sizing: border-box;
   }
@@ -48,16 +50,30 @@
   .cms-page .cms-product-form input,
   .cms-page .cms-product-form select,
   .cms-page .cms-product-form textarea {
+    width: 100%;
     max-width: 100%;
     box-sizing: border-box;
   }
 
-  .cms-page .cms-product-form .cms-image-row input {
-    flex: none !important;
+  .cms-page .cms-product-form .cms-image-row {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .cms-page .cms-product-form .cms-image-row input,
+  .cms-page .cms-product-form .cms-image-row label.button,
+  .cms-page .cms-product-form .cms-image-row button {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    justify-content: center !important;
   }
 
   .cms-page .cms-product-form .cms-form-actions {
     width: 100%;
+    flex-direction: column !important;
+    gap: 10px !important;
   }
 }
 
@@ -6087,3 +6103,35 @@ button {
     border-radius: 16px 16px 0 0;
   }
 }
+
+/* Mobile Performance & Touch Target Optimizations for Lighthouse */
+@media (max-width: 768px) {
+  .product-grid {
+    content-visibility: auto;
+    contain-intrinsic-size: 1000px;
+  }
+
+  .site-header .icon-button,
+  .quick-add,
+  .size-pill,
+  .cart-drawer,
+  .mobile-menu-drawer {
+    will-change: transform;
+    transform: translate3d(0, 0, 0);
+  }
+
+  .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .product .quick-add {
+    min-height: 44px;
+  }
+
+  .size-pill {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+}
+

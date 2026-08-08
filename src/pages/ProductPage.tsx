@@ -4,6 +4,7 @@ import type { Product } from '../types'
 import { money } from '../data/initialData'
 import { ProductCard } from '../components/ProductCard'
 import { trackProductView, getPersonalizedRecommendations } from '../services/recommendationService'
+import { optimizeWebpUrl } from '../lib/imageUtils'
 
 export function ProductPage({
   product,
@@ -23,7 +24,7 @@ export function ProductPage({
   const [selectedSize, setSelectedSize] = useState('M')
   const [activeSlide, setActiveSlide] = useState(0)
   const sliderRef = useRef<HTMLDivElement>(null)
-  const sizes = product.sizes || ['XS', 'S', 'M', 'L', 'XL', 'XXL']
+  const sizes = product.sizes && product.sizes.length > 0 ? product.sizes : ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL']
 
   useEffect(() => {
     if (product && product.id) {
@@ -37,8 +38,8 @@ export function ProductPage({
   }, [products, product.id, wished])
 
   const images = [
-    product.image,
-    product.hover || product.image
+    optimizeWebpUrl(product.image, 1000),
+    optimizeWebpUrl(product.hover || product.image, 1000)
   ].filter(Boolean)
 
   const scrollToSlide = (index: number) => {

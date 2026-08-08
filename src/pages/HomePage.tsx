@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { ArrowRight, ChevronDown } from 'lucide-react'
 import type { Product, HeroContent } from '../types'
 import { ProductCard } from '../components/ProductCard'
-
 import { getPersonalizedRecommendations } from '../services/recommendationService'
+import { optimizeWebpUrl } from '../lib/imageUtils'
 
 export function HomePage({
   navigate,
@@ -29,12 +29,19 @@ export function HomePage({
     setRecommended(recs)
   }, [products, wished])
 
+  const heroImageUrlSm = optimizeWebpUrl(heroContent?.imageUrl || 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=600&q=75', 600)
+  const heroImageUrlLg = optimizeWebpUrl(heroContent?.imageUrl || 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=1200&q=80', 1200)
+
   return (
     <main id="top">
 
       <section className="hero">
         <img
-          src={heroContent?.imageUrl || 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=2000&q=90'}
+          src={heroImageUrlLg}
+          srcSet={`${heroImageUrlSm} 600w, ${heroImageUrlLg} 1200w`}
+          sizes="(max-width: 768px) 100vw, 1200px"
+          fetchPriority="high"
+          decoding="async"
           alt="Woman wearing Femiro collection"
         />
         <div className="hero-shade" />

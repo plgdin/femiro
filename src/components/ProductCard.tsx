@@ -1,6 +1,7 @@
 import { Heart, ShoppingBag } from 'lucide-react'
 import type { Product } from '../types'
 import { money } from '../data/initialData'
+import { optimizeWebpUrl } from '../lib/imageUtils'
 
 export function ProductCard({
   product,
@@ -15,13 +16,22 @@ export function ProductCard({
   onAdd: () => void
   onOpen: () => void
 }) {
+  const mainImageSm = optimizeWebpUrl(product.image, 400)
+  const mainImageLg = optimizeWebpUrl(product.image, 700)
+  const hoverImageSm = optimizeWebpUrl(product.hover || product.image, 400)
+  const hoverImageLg = optimizeWebpUrl(product.hover || product.image, 700)
+
   return (
     <article className="product" onClick={onOpen}>
       <div className="product-image">
         <img
           className="first"
-          src={product.image}
+          src={mainImageSm}
+          srcSet={`${mainImageSm} 400w, ${mainImageLg} 700w`}
+          sizes="(max-width: 768px) 48vw, 320px"
           alt={product.name}
+          loading="lazy"
+          decoding="async"
           onError={e => {
             const image = e.currentTarget
             image.removeAttribute('src')
@@ -30,8 +40,12 @@ export function ProductCard({
         />
         <img
           className="second"
-          src={product.hover || product.image}
-          alt=""
+          src={hoverImageSm}
+          srcSet={`${hoverImageSm} 400w, ${hoverImageLg} 700w`}
+          sizes="(max-width: 768px) 48vw, 320px"
+          alt={`${product.name} alternate view`}
+          loading="lazy"
+          decoding="async"
           onError={e => {
             const image = e.currentTarget
             image.removeAttribute('src')
